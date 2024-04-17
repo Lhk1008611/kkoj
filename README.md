@@ -190,11 +190,11 @@ create table if not exists question_submit
 
     - 代码美化
 
-      ![image-20231026230021531](.\README.assets\image-20231026230021531.png)
+      ![image-20231026230021531](README.assets/image-20231026230021531.png)
 
     - 语法校验
 
-      ![image-20231026230336637](.\README.assets\image-20231026230336637.png)
+      ![image-20231026230336637](README.assets/image-20231026230336637.png)
 
 - 引入组件 
 
@@ -621,9 +621,9 @@ const visibleRoutes = routes.filter((item) => {
 
 2. 使用 `mybatis X`插件生成相关的`mapper`和`service`
 
-   ![image-20240327203213423](E:%5Cstudy%5Cproject%5Ckkoj%5CREADME.assets%5Cimage-20240327203213423.png)
+   ![image-20240327203213423](README.assets/image-20240327203213423.png)
 
-   ![image-20240327203718380](E:%5Cstudy%5Cproject%5Ckkoj%5CREADME.assets%5Cimage-20240327203718380.png)
+   ![image-20240327203718380](README.assets/image-20240327203718380.png)
    
 2. 将生成的代码移到对应的包下
 
