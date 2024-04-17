@@ -1,0 +1,6 @@
+[submodule "kkoj-backend"]
+	path = kkoj-backend
+	url = git@github.com:Lhk1008611/kkoj-backend.git
+[submodule "kkoj-ui"]
+	path = kkoj-ui
+	url = git@github.com:Lhk1008611/kkoj-ui.git
