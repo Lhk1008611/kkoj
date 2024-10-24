@@ -4,3 +4,6 @@
 [submodule "kkoj-ui"]
 	path = kkoj-ui
 	url = git@github.com:Lhk1008611/kkoj-ui.git
+[submodule "kkoj-code-sandbox"]
+	path = kkoj-code-sandbox
+	url = https://github.com/Lhk1008611/kkoj-code-sandbox
