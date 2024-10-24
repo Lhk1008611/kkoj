@@ -159,6 +159,19 @@ create table if not exists question_submit
   - vueCli
   - arco.design
   - vuex
+  - 在线代码编辑器组件
+    - [*monaco*-editor](https://github.com/microsoft/monaco-editor)
+  - 在线文档编辑浏览组件（富文本编辑）
+    - [*bytemd*](https://github.com/bytedance/bytemd)
+- 后端
+  - java 进程控制
+  - java 安全管理器
+  - jvm 
+- 其他
+  - 虚拟机
+  - docker
+  - spring cloud 微服务
+  - 消息队列
 
 ## 项目初始化
 
@@ -473,7 +486,7 @@ const visibleRoutes = routes.filter((item) => {
 
 ## 功能开发
 
-### 一、用户登录
+### 一、用户登录功能
 
 1. 前端实现全局的用户登录和路由跳转时权限的检查
 
@@ -610,7 +623,7 @@ const visibleRoutes = routes.filter((item) => {
 
 
 
-### 二、编写oj系统相关的 crud 接口
+### 二、crud 接口开发
 
 后端接口开发的基本流程
 
@@ -665,7 +678,1145 @@ const visibleRoutes = routes.filter((item) => {
       }
   ```
 
-## IDEA 插件
+### 三、前端页面开发
+
+- 相关功能
+  - 用户注册
+  - 创建题目（管理员）
+  - 题目管理（管理员）
+    - 查看
+      - 使用了 arco.design 组件库中的 table 组件
+    - 删除
+      - 删除后需要重新加载表格数据
+    - 修改
+      - 可复用创建题目页面，通过路由区分是修改还是创建
+    - 创建
+  - 题目列表（查看题目信息）
+    - 使用了 arco.design 组件库 table 组件、form 组件、tags 组件等
+  - 在线做题页面
+  - 使用 bytemd 的 viewer 组件和 monaco-editor 组件
+  - 题目提交列表（查看题目提交的信息）
+  - 扩展
+    - 统计相关功能
+  
+- 需要使用的组件
+
+  - 整合 Markdown 富文本编辑器
+
+    - [*bytemd*](https://github.com/bytedance/bytemd)
+
+    - 安装
+
+      ```bash
+      npm i @bytemd/vue-next
+      ```
+
+    - main.ts 中引入
+
+      ```ts
+      import 'bytemd/dist/index.css'
+      ```
+
+    - 具体使用看官方文档
+
+    - 子父组件属性传递，将属性和方法暴露给使用组件的地方，提高组件通用性
+
+      ```tsx
+      <template>
+        <Editor :value="value" :plugins="plugins" @change="handleChange" />
+      </template>
+      
+      <script setup lang="ts">
+      import gfm from "@bytemd/plugin-gfm";
+      import highlight from "@bytemd/plugin-highlight";
+      import { Editor, Viewer } from "@bytemd/vue-next";
+      import { withDefaults, defineProps } from "vue";
+      
+      interface Props {
+        value: string;
+        handleChange: (v: string) => void;
+      }
+      
+      const props = withDefaults(defineProps<Props>(), {
+        value: () => "",
+        handleChange: (v: string) => {
+          console.log(v);
+        },
+      });
+      
+      const plugins = [gfm(), highlight()];
+      </script>
+      ```
+
+  - 整合代码编辑器
+
+    - [*monaco*-editor](https://github.com/microsoft/monaco-editor)：微软官方编辑器
+
+    - 安装
+
+      ```bash
+      npm install monaco-editor
+      npm install monaco-editor-webpack-plugin
+      ```
+
+    - vue-cli 脚手架是基于 webpack 进行打包，可在 `vue.config.js` 文件中对 webpack 进行配置
+
+      ```js
+      const { defineConfig } = require("@vue/cli-service");
+      const MonacoWebpackPlugin = require("monaco-editor-webpack-plugin");
+      
+      module.exports = defineConfig({
+        transpileDependencies: true,
+        configureWebpack: {
+          plugins: [new MonacoWebpackPlugin()],
+        },
+        // chainWebpack: (config) => {
+        //   config.plugin("monaco").use(new MonacoWebpackPlugin());
+        // },
+      });
+      ```
+
+    - 注意，monaco editor 在读写值的时候，要使用 `toRaw(编辑器实例)` 的语法来执行操作，否则会卡死
+
+      ```ts
+        // 改变编辑器内容
+        toRaw(myEditor.value).setValue("");
+      
+        //监听编辑器内容变化
+        myEditor.value.onDidChangeModelContent(() => {
+          console.log(toRaw(myEditor.value).getValue());
+        });
+      ```
+
+    - 子父组件属性传递，将属性和方法暴露给使用组件的地方，提高组件通用性
+
+      ```ts
+      <template>
+        <div id="code-editor" ref="codeEditor" style="min-height: 400px"></div>
+      </template>
+      
+      <script setup lang="ts">
+      import * as monaco from "monaco-editor";
+      import { defineProps, onMounted, ref, toRaw, withDefaults } from "vue";
+      
+      /**
+       * 提供属性接口，交给父组件
+       */
+      interface Props {
+        value: string;
+        handleChange: (v: string) => void;
+      }
+      
+      /**
+       * 定义属性默认值
+       */
+      const props = withDefaults(defineProps<Props>(), {
+        value: () => "",
+        handleChange: (v: string) => {
+          console.log(v);
+        },
+      });
+      
+      const value = ref(`function hello() {
+      	alert('Hello world!');
+      }`);
+      const codeEditor = ref();
+      const myEditor = ref();
+      
+      onMounted(() => {
+        if (!codeEditor.value) {
+          return;
+        }
+        myEditor.value = monaco.editor.create(codeEditor.value, {
+          value: props.value,
+          language: "java",
+          automaticLayout: true,
+          readOnly: false,
+          minimap: {
+            enabled: true,
+          },
+          theme: "vs-dark",
+        });
+        //监听编辑器内容变化
+        myEditor.value.onDidChangeModelContent(() => {
+          props.handleChange(toRaw(myEditor.value).getValue());
+        });
+      });
+      </script>
+      ```
+
+    - 代码编辑器切换编程语言
+
+      ```ts
+      /**
+       * 监听语言变化
+       */
+      watch(
+        () => props.language,
+        () => {
+          if (myEditor.value) {
+            monaco.editor.setModelLanguage(
+              toRaw(myEditor.value).getModel(),
+              props.language
+            );
+          }
+        }
+      );
+      ```
+
+      
+
+### 四、判题机开发（判题服务 + 代码沙箱）
+
+#### 代码沙箱实现方式
+
+- 可实现的代码沙箱
+  - 自定义实现代码沙箱
+    - docker 实现
+    - Java 原生实现
+  - 调用第三方代码沙箱（别人的 api 接口）
+
+#### 使用的设计模式
+
+**工厂模式**
+
+- 使用静态工厂模式，来获取指定的代码沙箱实例去调用指定的代码沙箱，而非通过 `new` 的方式创建指定的代码沙箱实例，提高通用性和扩展性
+
+  - 多例
+
+    ```java
+    /**
+     * 静态代码沙箱工厂类
+     */
+    public class CodeSandBoxFactory {
+    
+        /**
+         * 获取对应的沙箱实例
+         *
+         * @param type 沙箱类型
+         * @return
+         */
+        public static CodeSandBox newInstance(String type) {
+            switch (type){
+                case "remote":
+                    return new RemoteCodeSandBox();
+                case "thirdParty":
+                    return new ThirdPartyCodeSandBox();
+                default:
+                    return new ExampleCodeSandBox();
+            }
+        }
+    }
+    
+    ```
+
+  - 单例
+
+    ```java
+    /**
+     * 单例静态代码沙箱工厂类
+     */
+    public class CodeSandBoxFactory {
+        private static final Map<String, CodeSandBox> codeSandBoxMap = new HashMap<>();
+    
+        static {
+            codeSandBoxMap.put("example", new ExampleCodeSandBox());
+            codeSandBoxMap.put("remote", new RemoteCodeSandBox());
+            codeSandBoxMap.put("thirdParty", new ThirdPartyCodeSandBox());
+        }
+    
+        /**
+         * 获取对应的沙箱实例
+         *
+         * @param type 沙箱类型
+         * @return
+         */
+        public static CodeSandBox newInstance(String type) {
+            return codeSandBoxMap.get(type);
+        }
+    }
+    ```
+
+  - 沙箱类型配置化，在配置文件中指定沙箱类型，可通过`@Value()` 注解获取到配置信息
+
+    ```yaml
+    codesandbox:
+      type: "example"
+    ```
+
+  - 创建实例方式
+
+    ```java
+    @Value("${codesandbox.type:example}")
+    private String type;
+    
+    CodeSandBox codeSandBox = new CodeSandBoxFactory().newInstance(type);
+    ```
+
+**代理模式**
+
+- 使用静态代理模式，对代码沙箱进行能力增强，如打印日志信息，这样可无需在每个代码沙箱实现的地方都输出日志信息，无需变动原始代码
+
+  ```java
+  /**
+   * 代码沙箱代理类
+   */
+  @Slf4j
+  public class CodeSandBoxProxy implements CodeSandBox {
+  
+      private CodeSandBox codeSandBox;
+      
+      public CodeSandBoxProxy(CodeSandBox codeSandBox) {
+          this.codeSandBox = codeSandBox;
+      }
+      
+      /**
+       * 执行代码
+       *
+       * @param executeCodeRequest
+       * @return
+       */
+      @Override
+      public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
+          log.info("代码沙箱执行请求信息"+ executeCodeRequest.toString());
+          // 执行原始代码沙箱功能
+          ExecuteCodeResponse executeCodeResponse = codeSandBox.executeCode(executeCodeRequest);
+          if (executeCodeResponse != null){
+              log.info("代码沙箱执行响应信息"+ executeCodeResponse.toString());
+          }else {
+              log.info("代码沙箱执行响应信息为空");
+          }
+          return executeCodeResponse;
+      }
+  }
+  ```
+
+- 使用方式
+
+  ```java
+  @SpringBootTest
+  class CodeSandBoxTest {
+  
+      @Value("${codesandbox.type:example}")
+      private String type;
+      
+      @Test
+      void executeCode() {
+          CodeSandBox codeSandBox = new CodeSandBoxFactory().newInstance(type);
+          CodeSandBoxProxy codeSandBoxProxy = new CodeSandBoxProxy(codeSandBox);
+          String code = "public class Main {public static void main(String[] args) {System.out.println(\"Hello World\");}}";
+          String language = QuestionLanguageEnum.JAVA.getValue();
+          List<String> inputList = Arrays.asList("1 2", "3 4");
+  
+          ExecuteCodeRequest executeCodeRequest = ExecuteCodeRequest.builder()
+                  .inputList(inputList)
+                  .language(language)
+                  .code(code)
+                  .build();
+          codeSandBoxProxy.executeCode(executeCodeRequest);
+      }
+  }
+  ```
+
+**策略模式**
+
+-  使用策略模式，用于区分不同场景下不同的实现逻辑，例如：编程语言不同，判题的逻辑会不一样
+
+  - 当策略接口需要传递的参数不确定时，可以创建一个 context 类，在该类里面封装需要传递的参数
+  - 具体的实现类只需要实现策略接口即可
+  - 当策略实现类很多时，可以通过创建 manager 管理策略，简化调用
+
+  ```java
+  /**
+   * 判题策略接口
+   */
+  public interface JudgeStrategy {
+      /**
+       * 执行判题
+       * @param judgeContext
+       * @return
+       */
+      JudgeInfo judge(JudgeContext judgeContext);
+  }
+  ```
+
+  ```java
+  /**
+   * 判题策略上下文
+   * @author lhk
+   */
+  @Data
+  public class JudgeContext {
+  
+      /**
+       * 判题信息
+       */
+      private JudgeInfo judgeInfo;
+  
+      /**
+       * 输入用例列表
+       */
+      private List<String> inputList;
+  
+      /**
+       * 经过代码沙箱后的输出用例列表
+       */
+      private List<String> outputList;
+  
+      /**
+       * 题目信息
+       */
+      private Question question;
+  
+      /**
+       * 标准判题输入输出用例列表 [输入用例，标准输出用例]
+       */
+      private List<JudgeCase> judgeCaselist;
+  
+  }
+  ```
+
+  ```java
+  /**
+   * 判题策略管理
+   */
+  public class JudgeManager {
+      /**
+       * 区分不同的判题策略，执行判题
+       * @param judgeContext
+       * @return
+       */
+      JudgeInfo judge(JudgeContext judgeContext){
+          QuestionSubmit questionSubmit = judgeContext.getQuestionSubmit();
+          String language = questionSubmit.getLanguage();
+          JudgeStrategy judgeStrategy = new DefaultJudgeStrategyImpl();
+          if (language.equals("java")){
+              judgeStrategy = new JavaJudgeStrategyImpl();
+          }
+          return judgeStrategy.judge(judgeContext);
+      }
+  }
+  ```
+
+  
+
+####  判题服务开发
+
+- 判题服务是在题目提交的时候进行调用
+  - 在题目提交后调用判题服务，因此题目提交接口需要先往题目提交表里插入数据，然后再调用判题服务，判题服务通过对题目的传入输入、输出用例、代码、编程语言等信息进行处理，等待判题服务返回结果
+  - 判题服务主要逻辑是把输入用例和代码传入代码沙箱，代码沙箱返回结果后，再验证输出用例等信息，以达到判题的目的。因此代码沙箱和判题服务是解耦的，代码沙箱只负责返回结构，无论结果错对
+  - 使用策略模式，用于区分不同场景下不同的实现逻辑，例如：编程语言不同，判题的逻辑会不一样，需要校验的数据不同等
+
+#### 代码沙箱开发
+
+- 由于代码沙箱可以作为一个单独的服务提供接口给其他项目使用，因此，代码沙箱可以单独建立一个 spring-boot 项目
+
+  - spring-boot 2.7
+  - Java 1.8
+
+- 代码沙箱主要逻辑：
+
+  1. 接收代码 
+
+  2. 编译代码 （`javac`）
+
+     ```bash
+     javac ./Main.java
+     # 指定编码格式
+     javac -encoding utf-8 ./Main.java
+     ```
+
+  3. 执行代码（`java`）
+
+     ```bash
+     java -Dfile.encoding=UTF-8 -cp . Main 参数1 参数2
+     ```
+
+- 核心流程实现
+  - 核心实现思路: 用程序代替人工，用程序来操作命令行，去编译执行代码
+    - 使用 Java 进程执行管理类: `Process`
+  - 流程
+    1. 把用户的代码保存为文件
+    2. 编译代码，得到 class 文件
+    3. 执行代码，得到输出结果
+    4. 收集整理输出结果
+    5. 文件清理
+    6. 错误处理，提升程序健壮性
+
+##### Java 原生实现代码沙箱
+
+- 由于多个输入用例会有多次程序执行，时间限制可以通过取所有执行时间的最大值来判断是否超时
+
+  - 获取程序执行时间，使用 spring 的 `StopWatch` 获取一段程序的执行时间
+
+  ```java
+  
+  public class ProcessUtils {
+  
+      public static ExecuteMessage run(String command, String operationName) throws IOException, InterruptedException {
+  
+              StopWatch stopWatch = new StopWatch();
+              stopWatch.start();
+              //执行命令
+              Process compileProcess = Runtime.getRuntime().exec(command);
+              //等待命令执行完毕，得到程序执行码
+              int exitCode = compileProcess.waitFor();
+              ExecuteMessage executeMessage = new ExecuteMessage();
+              executeMessage.setExitCode(exitCode);
+              if (exitCode == 0) {
+                  System.out.println(operationName + "成功");
+                  // 读取正常的输出
+                  String execOutput = readExecOutput(compileProcess.getInputStream());
+                  executeMessage.setSuccessMessage(execOutput);
+              } else {
+                  System.out.println(operationName + "失败，错误码 " + exitCode);
+                  // 读取正常的输出
+                  String execOutput = readExecOutput(compileProcess.getInputStream());
+                  executeMessage.setSuccessMessage(execOutput);
+                  // 读取错误的输出
+                  String errorExecOutput = readExecOutput(compileProcess.getErrorStream());
+                  executeMessage.setErrorMessage(errorExecOutput);
+              }
+              stopWatch.stop();
+              executeMessage.setExecTime(stopWatch.getLastTaskTimeMillis());
+              return executeMessage;
+      }
+  
+      private static String readExecOutput(InputStream inputStream) {
+          BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
+          String outputLine;
+          StringBuilder result = new StringBuilder();
+          try {
+              while ((outputLine = bufferedReader.readLine()) != null) {
+                  result.append("\n").append(outputLine);
+              }
+          } catch (IOException e) {
+              throw new RuntimeException(e);
+          }
+          return result.toString();
+      }
+  }
+  ```
+
+  - 调用方法
+
+  ```java
+          //2. 编译代码，得到 class 文件
+          String compileCmd = String.format("javac -encoding utf-8 %s", userCodeFilePath);
+          ExecuteMessage compileMessage = null;
+          try {
+              compileMessage = ProcessUtils.run(compileCmd, "编译");
+          } catch (IOException|InterruptedException e) {
+              return getErrorResponse(e);
+          }
+  
+  		//3. 执行代码，得到输出结果
+          List<ExecuteMessage> execMessageList = new ArrayList<>();
+          for (String inputArgs : inputList){
+              String execCmd = String.format("java -Dfile.encoding=UTF-8 -cp %s Main %s", userCodeDIR, inputArgs);
+              ExecuteMessage executeMessage = null;
+              try {
+                  executeMessage = ProcessUtils.run(execCmd, "执行");
+                  execMessageList.add(executeMessage);
+              } catch (IOException | InterruptedException e) {
+                  return getErrorResponse(e);
+              }
+          }
+  ```
+
+
+###### 代码沙箱的安全性问题
+
+- 当遇到恶意代码提交时，如何确保整个代码沙箱程序的安全性
+
+  1. 执行阻塞，占用资源部分，例如长时间 `sleep` 导致的阻塞
+
+     ```java
+     public class Main {
+         public static void main(String[] args)
+         {
+             try
+             {
+                 long time = 60*60*1000;
+                 Thread.sleep(time);
+             }
+             catch (InterruptedException e)
+             {
+                 throw new RuntimeException(e);
+             }
+         }
+     }
+     ```
+
+  2. 占用内存过多，浪费系统内存，触发 JVM 堆内存溢出（OOM）
+
+     - 可以使用 JVisualVM 或 JConsole 可视化工具，连接到 JVM 虚拟机上来查看 JVM 状态
+
+     ```java
+     import java.util.List;
+     import java.util.ArrayList;
+     
+     public class Main {
+         public static void main(String[] args)
+         {
+             List<Byte[]> list = new ArrayList<>();
+             while (true)
+             {
+                 list.add(new Byte[1024*1024]);
+             }
+         }
+     }
+     ```
+
+  3. 读取服务器敏感信息
+
+     - 例如读取服务器配置文件（application.yml）中的信息，导致信息泄露
+
+       ```java
+     import java.io.File;
+       import java.io.IOException;
+       import java.nio.file.Files;
+       import java.util.List;
+       
+       public class Main {
+           public static void main(String[] args) throws IOException {
+               String userDir = System.getProperty("user.dir");
+               String filePath = userDir + File.separator + "src/main/resources/application.yml";
+               List<String> strings = Files.readAllLines(new File(filePath).toPath());
+               System.out.println(String.join("\n", strings));
+           }
+       }
+       ```
+  
+  4. 写文件，越权向系统植入木马
+
+     ```java
+   import java.io.File;
+     import java.io.IOException;
+     import java.nio.file.Files;
+     import java.nio.file.Paths;
+     import java.util.Arrays;
+     
+     public class Main {
+         public static void main(String[] args) throws IOException {
+             String userDir = System.getProperty("user.dir");
+             String filePath = userDir + File.separator + "src/test/resources/木马.bat";
+             String dangerousCode = "java -version 2>&1";
+             Files.write(Paths.get(filePath), Arrays.asList(dangerousCode));
+             System.out.println("危险程序植入成功");
+         }
+     }
+     ```
+  
+  5. 运行其他危险程序
+
+     - 直接通过 Process 执行危险程序或者其他程序
+
+     ```java
+   import java.io.BufferedReader;
+     import java.io.File;
+     import java.io.IOException;
+     import java.io.InputStreamReader;
+     import java.nio.charset.StandardCharsets;
+     
+     public class Main {
+         public static void main(String[] args) throws IOException, InterruptedException {
+             String userDir = System.getProperty("user.dir");
+             String filePath = userDir + File.separator + "src/test/resources/木马.bat";
+             Process exec = Runtime.getRuntime().exec(filePath);
+             exec.waitFor();
+             BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(exec.getInputStream(), StandardCharsets.UTF_8));
+             String outputLine;
+             StringBuilder result = new StringBuilder();
+             while ((outputLine = bufferedReader.readLine()) != null) {
+                 result.append("\n").append(outputLine);
+             }
+             System.out.println(result);
+         }
+     }
+     ```
+  
+  6. 执行高危命令
+
+     - 删除服务器所有文件（ `rm -rf` ）
+   - 执行关机命令等等
+  
+- **解决方案**
+
+  1. 超时控制，超过多长时间自动释放资源
+
+     - 可以通过创建一个新的线程，来监控执行时间，超时则中断程序
+
+       ```java
+                   // 创建超时控制线程，如果超过5秒，则杀死 runProcess 进程
+                   new Thread(() -> {
+                           try {
+                               Thread.sleep(TIME_OUT);
+                               if (runProcess.isAlive()){
+                                   System.out.println("程序执行超时");
+                                   runProcess.destroy();
+                               }
+                           } catch (InterruptedException e) {
+                               throw new RuntimeException(e);
+                           }
+                   }).start();
+       ```
+
+  2. 限制给用户分配的资源
+
+     - 给 java 进程的 JVM 堆内存设置最大的限制，而不能让 JVM  的堆内存空间与系统内存空间一样大
+     - 在启动 Java 时，可以指定 JVM 的参数
+       - `-Xmx256m`(最大堆空间大小)
+       - `-Xms`(初始堆空间大小)
+
+     ```bash
+     java -Xmx256m -Dfile.encoding=UTF-8 -cp . Main 参数1 参数2
+     ```
+
+     - 注意:
+       - `-Xmx` 参数设置 JVM 的堆内存限制，不等同于系统实际占用的最大资源，实际占用的资源可能会超出设置的，因此这样的内存限制实际上来说是不准确的
+       - 如何需要更精确的限制，需要在系统层面进行限制
+         - 如果是 Linux 系统，可以使用 `cgroup` 来实现对某个进程的 CPU、内存等资源的分配
+
+  3. 限制代码，将一些高危代码加入黑白名单中，禁止这些代码的使用
+
+     - 比如将一些高危代码存入集合中，通过判断运行代码里面存不存在这些代码进行限制
+
+       ```java
+           /**
+            * 命令黑名单
+            */
+           private static List<String> blackList = Arrays.asList("rm", "sh", "bash", "System", "exec");
+       ```
+
+       ```java
+               // 校验代码是否符合要求
+               if (blackList.stream().anyMatch(subStr -> code.contains(subStr))){
+                   return new ExecuteCodeResponse(new ArrayList<>(), "代码含有非法词汇", 2, null);
+               }
+       ```
+
+     - 也可以使用 hutool 的 `WordTree` 工具类判断单词的存在，使用字典树数据结构可以用更少的空间存储更多的敏感词汇，实现更高效的敏感词查找
+
+       ```java
+           /**
+            * 命令黑名单
+            */
+           private static List<String> blackList = Arrays.asList("rm", "sh", "bash","File","Files",  "System.getProperty", "exec");
+       
+           /**
+            * 命令黑名单树
+            */
+           private static WordTree wordTree;
+           static {
+               wordTree = new WordTree();
+               wordTree.addWords(blackList);
+           }
+       ```
+
+       ```java
+               List<FoundWord> foundWords = wordTree.matchAllWords(code);
+               if (!foundWords.isEmpty()){
+                   System.out.println("代码含有非法词汇：" + foundWords);
+                   return new ExecuteCodeResponse(new ArrayList<>(), "代码含有非法词汇", 2, null);
+               }
+       ```
+
+     - **缺点**：
+       - 无法枚举出所有黑名单
+       - 不同的编程语言，对应的领域、关键词都不一样，限制成本很大
+
+  4. 限制用户的操作权限，比如文件、内存、CPU、网络、执行等权限
+
+     - Java 安全管理器 ，权限控制很灵活，实现简单
+
+       > Java 安全管理器 (SecurityManager) 是 Java 安全模型的一个核心组件，它负责实施安全策略，控制程序对系统资源的访问。SecurityManager 是一个抽象类，允许开发者通过继承这个类并覆盖其实现的方法来定制自己的安全管理逻辑。Java 应用程序可以通过调用 System.setSecurityManager() 方法来安装一个安全管理器实例。
+       > 主要功能
+       > 安全策略管理：定义哪些代码可以执行特定的操作，例如访问文件系统或网络连接。
+       > 权限控制：通过权限对象（如 FilePermission, SocketPermission 等）来控制对敏感资源的访问。
+       > 策略文件：通常会有一个策略文件来指定不同代码源的权限，安全管理器会依据这个文件来决定是否允许某个操作。
+       > 使用场景
+       > 当应用程序需要运行不可信的第三方代码或者需要保护系统资源不被滥用时，可以使用安全管理器来加强安全性。例如，在 Applet 或 WebStart 应用中，安全管理器用来防止恶意代码危害用户计算机。
+       > 实现方式
+       > 定义权限：通过权限对象定义代码可以执行的动作。
+       > 设置策略：编写策略文件来指定不同代码源的权限。
+       > 安装安全管理器：通过 System.setSecurityManager(new MySecurityManager()) 安装自定义的安全管理器。
+       > 注意事项
+       > 在现代的 Java 应用中，使用安全管理器的情况已经不如以前普遍，因为现代的 Java 运行环境提供了更加细粒度的权限控制和更先进的安全特性。
+       > 从 Java 9 开始，SecurityManager 被标记为过时，尽管它仍然可用，但建议使用更现代的安全机制来替代。
+       > 尽管 SecurityManager 提供了一个强大的安全框架，但它也存在一些缺点，比如可能增加应用程序的复杂性，以及对于现代开发模式来说可能过于严格或不够灵活。因此，在设计新的 Java 应用时，应考虑是否真的需要使用 SecurityManager，或者是否有其他更适合的解决方案。
+
+     - 在执行用户代码时，运行指定的 Java 安全管理器，需要先将安全管理器类编译好放在指定位置
+
+       ```bash
+       # widonws下的命令
+       java -Xmx256m -Dfile.encoding=UTF-8 -cp %s;%s -Djava.security.manager=MySecurityManager Main %s
+       
+       #Linux 下的命令
+       java -Xmx256m -Dfile.encoding=UTF-8 -cp %s:%s -Djava.security.manager=MySecurityManager Main %s
+       ```
+
+       ```java
+       private static final String SECURITY_MANAGER_DIR = File.separator+"src"+File.separator+"main"+File.separator+"resources"+File.separator+"security";
+       private static final String SECURITY_MANAGER_NAME = "MySecurityManager";
+       
+       String execCmd = String.format("java -Xmx256m -Dfile.encoding=UTF-8 -cp %s;%s -Djava.security.manager=%s Main %s", userCodeDIR, userDir+SECURITY_MANAGER_DIR, SECURITY_MANAGER_NAME, inputArgs);
+       
+       ```
+
+       ```java
+       import java.security.Permission;
+       
+       public class MySecurityManager extends SecurityManager {
+       
+           @Override
+           public void checkPermission(Permission perm) {
+       
+           }
+       
+           @Override
+           public void checkExec(String cmd) {
+               throw new SecurityException("禁止执行外部命令：" + cmd);
+           }
+       }
+       ```
+
+     - 缺点：
+
+       - 如果要做比较严格的权限限制，需要自己去判断哪些文件、包名需要允许读写，粒度太细了难以精细化控制，不建议使用
+       - 安全管理器本身也是 Java 代码，也有可能存在漏洞(还是程序上的限制，没到系统的层面)
+
+  5. 运行环境隔离
+
+     - 系统层面上，把用户程序封装到沙箱里，和宿主机(我们的电脑/服务器)隔离开
+     - 使用 Docker 容器技术能够实现 ( 底层是用 cgroup、namespace 等方式实现的)
+
+##### Docker 实现远端代码沙箱
+
+- 使用 Docker 容器技术，可以提升系统的安全性，把不同的程序和宿主机进行隔离，使得某个程序(应用)的执行不会影响到系统本身。非常适合用于实现代码沙箱
+
+###### docker-java
+
+- Java 操作 Docker 的 api
+
+  - [docker-java/docker-java: Java Docker API Client (github.com)](https://github.com/docker-java/docker-java)
+
+  - 依赖
+
+    ```xml
+            <!-- https://mvnrepository.com/artifact/com.github.docker-java/docker-java -->
+            <dependency>
+                <groupId>com.github.docker-java</groupId>
+                <artifactId>docker-java</artifactId>
+                <version>3.3.0</version>
+            </dependency>
+    
+            <!-- https://mvnrepository.com/artifact/com.github.docker-java/docker-java-transport-httpclient5 -->
+            <dependency>
+                <groupId>com.github.docker-java</groupId>
+                <artifactId>docker-java-transport-httpclient5</artifactId>
+                <version>3.3.0</version>
+            </dependency>
+    ```
+
+  - 文档：[docker-java/docs/getting_started.md at main · docker-java/docker-java (github.com)](https://github.com/docker-java/docker-java/blob/main/docs/getting_started.md)
+
+  - `DockerClientConfig` : 用于定义初始化 DockerClient 的配置 (类比 MySQL 的连接、线程数配置)
+
+  - `DockerHttpClient` : 用于向 Docker 守护进程(操作 Docker 的接口)发送请求的客户端，低层封装(不推荐使用)，需要自己构建请求参数
+
+  - `DockerClient` : 才是真正和 Docker 守护进程交互的、最方便的 SDK，高层封装，对 `DockerHttpClient` 再进行了一层封装，提供了现成的增删改查（推荐使用）
+
+  - 参考：https://cloud.tencent.com/developer/article/2111270
+
+  - 例子：
+
+    ```java
+    @Test
+        void testDockerJava() throws InterruptedException {
+            DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
+                    .withDockerHost("tcp://192.168.xxx.xxx:2376")
+                    .build();
+            DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
+                    .dockerHost(config.getDockerHost())
+                    .sslConfig(config.getSSLConfig())
+                    .maxConnections(100)
+                    .connectionTimeout(Duration.ofSeconds(30))
+                    .responseTimeout(Duration.ofSeconds(45))
+                    .build();
+            DockerClient dockerClient = DockerClientImpl.getInstance(config, httpClient);
+            String image = "nginx:latest";
+            PullImageCmd pullImageCmd = dockerClient.pullImageCmd(image);
+            PullImageResultCallback pullImageResultCallback = new PullImageResultCallback(){
+                @Override
+                public void onNext(PullResponseItem item) {
+                    System.out.println("拉取镜像"+ item.getStatus());
+                    super.onNext(item);
+                }
+            };
+            pullImageCmd
+                    .exec(pullImageResultCallback)
+                    .awaitCompletion();
+            System.out.println("拉取镜像完成");
+        }
+    ```
+
+###### 实现代码沙箱
+
+- 实现流程: 远端 docker 负责运行 java 程序，并且得到结果
+
+  1. 把用户的代码保存为文件
+
+     - 建议基于 Linux 进行开发，文件直接保存在 Linux 系统中
+
+  2. 编译代码，得到 class 文件
+
+  3. 把编译好的文件上传到容器环境内（文件挂载）
+
+     - 需要创建的是一个可交互的容器，即一个容器可以进行多个次测试用例的输入输出
+
+       ```java
+        		// 创建 jdk 容器
+               CreateContainerCmd containerCmd = DockerJavaConfig.createContainerCmd(DK_IMAGE_NAME);
+               HostConfig hostConfig = new HostConfig();
+               // 容器内存限制、容器 cpu 限制
+               hostConfig.withMemory(100 * 1024 * 1024L).withCpuCount(2L);
+               // 数据卷挂载
+               hostConfig.setBinds(new Bind(userCodeDIR, new Volume("/sandbox")));
+               CreateContainerResponse containerResponse = containerCmd
+                       .withHostConfig(hostConfig)
+                       .withAttachStderr(true)
+                       .withAttachStdin(true)
+                       .withAttachStdout(true)
+                       .withTty(true)
+                       .withCmd("/bin/sh")  // 可交互的命令
+                       .exec();
+       ```
+
+     - 建议整个沙箱项目基于 Linux 进行开发，因为需要将**编译好的代码文件挂载到 docker**
+
+     - 启动容器
+
+       ```java
+               //启动容器
+               DockerJavaConfig.startContainerCmd(containerId).exec();
+       ```
+
+     - 
+
+  4. 在容器中执行代码，得到输出结果
+
+     ```bash
+     # docker exec 容器名 java -cp 文件挂载的目录 Main 1 3
+     docker exec optimistic_hodgkin java -cp /sandbox Main 1 3
+     ```
+
+     ````java
+             //在容器中运行编译好的代码,执行多个输入用例
+             for (String input : inputList) {
+                 //构造命令
+                 String[] inputArgs = StringUtils.split(input, " ");
+                 String[] javaCmdArr = ArrayUtil.append(new String[]{"java", "-cp", "/sandbox", "Main"}, inputArgs);
+                 ExecCreateCmdResponse execCreateCmdResponse = DockerJavaConfig.execCreateCmd(containerId)
+                         .withCmd(javaCmdArr)
+                         .withAttachStderr(true)
+                         .withAttachStdin(true)
+                         .withAttachStdout(true)
+                         .exec();
+                 System.out.println("已创建程序运行命令" + execCreateCmdResponse);
+                 String execId = execCreateCmdResponse.getId();
+                 ExecuteMessage executeMessage = new ExecuteMessage();
+                 StopWatch stopWatch = new StopWatch();
+                 ExecStartResultCallback execStartResultCallback = getExecStartResultCallback(executeMessage);
+                 // 获取占用内存
+                 StatsCmd statsCmd = DockerJavaConfig.statsCmd(containerId);
+                 // 执行 statsCmd 会异步的执行一个回调函数，该回调函数会一直在后台运行，监控容器的状态
+                 ResultCallback<Statistics> statsResultCallback = getResultCallback(executeMessage);
+                 statsCmd.exec(statsResultCallback);
+     
+                 try {
+                     stopWatch.start();
+                     //运行命令
+                     System.out.println("运行代码");
+                     DockerJavaConfig.execStartCmd(execId).exec(execStartResultCallback).awaitCompletion();
+                     stopWatch.stop();
+                     executeMessage.setExecTime(stopWatch.getLastTaskTimeMillis());
+                     statsCmd.close();
+                 } catch (InterruptedException e) {
+                     throw new RuntimeException(e);
+                 }
+                 execMessageList.add(executeMessage);
+             }
+     
+             System.out.println("关闭容器");
+             DockerJavaConfig.stopContainerCmd(containerId).exec();
+     
+             System.out.println("执行结果信息" + execMessageList);
+     
+             System.out.println("删除容器");
+             DockerJavaConfig.removeContainerCmd(containerId).exec();
+     ````
+
+     - 获取程序执行时间: 使用 StopWatch 在执行前后统计时间
+     - 获取程序占用内存: 程序占用的内存每个时刻都在变化，所以不可能获取到所有时间点的内存，可以取这段时间内使用的最大内存
+
+  5. 收集整理输出结果
+
+     ```java
+             // 整理返回结果
+     		ExecuteCodeResponse executeCodeResponse = new ExecuteCodeResponse();
+             List<String> outputList = new ArrayList<>();
+             long maxExecTime = 0;
+             long maxExecMemory = 0;
+             for (ExecuteMessage executeMessage : execMessageList){
+                 String errorMessage = executeMessage.getErrorMessage();
+                 if (StrUtil.isNotBlank(errorMessage)){
+                     // 代码运行出现错误，设置状态为 3
+                     executeCodeResponse.setMessage(errorMessage);
+                     executeCodeResponse.setStatus(3);
+                     break;
+                 }
+                 outputList.add(executeMessage.getSuccessMessage());
+                 Long execTime = executeMessage.getExecTime();
+                 if (execTime != null){
+                     // 最大执行时间
+                     maxExecTime = Math.max(maxExecTime, execTime);
+                 }
+                 Long execMemory = executeMessage.getExecMemory();
+                 if (execMemory != null){
+                     // 最大执行消耗内存
+                     maxExecMemory = Math.max(maxExecMemory, execMemory);
+                 }
+             }
+             // 结果正确设置状态为 1
+             if (outputList.size() == execMessageList.size()){
+                 executeCodeResponse.setStatus(1);
+                 executeCodeResponse.setMessage("代码沙箱执行成功");
+             }
+             executeCodeResponse.setOutputList(outputList);
+             JudgeInfo judgeInfo = new JudgeInfo();
+             judgeInfo.setMemory(maxExecMemory);
+             judgeInfo.setTime(maxExecTime);
+             executeCodeResponse.setJudgeInfo(judgeInfo);
+     ```
+
+  6. 文件清理，释放空间
+
+     ```java
+             if (FileUtil.exist(userCodeFile.getParentFile())){
+                 boolean del = FileUtil.del(userCodeDIR);
+                 System.out.println(del ? "文件删除成功" : "文件删除失败");
+             }
+     ```
+
+  7. 错误处理，提升程序健壮性
+
+     1. 超时控制，运行程序的时间不能过长
+
+        ```java
+        // 当程序运行正常切不超时，则会执行回调函数中的 onComplete() 方法，可以在此方法中判断是否是程序超时
+                        dockerClient.
+                                execStartCmd(execId).
+                                exec(execStartResultCallback).
+                                awaitCompletion(ProcessUtils.TIME_OUT, TimeUnit.MILLISECONDS);
+        ```
+
+     2. 限制给用户程序分配的资源
+
+        ```java
+                HostConfig hostConfig = new HostConfig();
+        		// 容器内存限制、容器 cpu 限制
+                hostConfig.withMemory(100 * 1024 * 1024L).withCpuCount(2L);
+                // 数据卷挂载
+                hostConfig.setBinds(new Bind(userCodeDIR, new Volume("/sandbox")));
+                CreateContainerResponse containerResponse = containerCmd
+                        .withHostConfig(hostConfig)
+                        .withNetworkDisabled(true) // 禁用网络资源
+                        .withAttachStderr(true)
+                        .withAttachStdin(true)
+                        .withAttachStdout(true)
+                        .withTty(true)
+                        .withCmd("/bin/sh")
+                        .exec();
+        ```
+
+     3. 限制可运行的代码
+
+        - 使用黑白名单
+
+     4. 限制用户的操作权限
+
+        1. Docker 容器已经做了系统层面的隔离，比较安全，但不能保证绝对安全
+
+        2. 可以配合使用 Java 安全管理器保证用户的操作权限
+
+        3. 限制用户不能往根目录写文件
+
+           ```java
+                   CreateContainerResponse containerResponse = containerCmd
+                           .withHostConfig(hostConfig)
+                           .withNetworkDisabled(true) // 禁用网络资源
+                           .withReadonlyRootfs(true) // 只读根目录下的资源
+                           .withAttachStderr(true)
+                           .withAttachStdin(true)
+                           .withAttachStdout(true)
+                           .withTty(true)
+                           .withCmd("/bin/sh")
+                           .exec();
+           ```
+
+        4. 使用 Linux 自带的一些安全管理措施，例如 seccomp（安全计算）
+
+           ```java
+                   hostConfig.withSecurityOpts(Arrays.asList("seccomp=安全管理配置json字符串"))
+           ```
+
+           > Seccomp (Secure Computing Mode) 是一种重要的 Linux 安全特性，主要用于限制进程可以执行的系统调用。其主要特点包括：
+           > 安全性增强：通过限制进程可执行的系统调用，即使应用程序存在漏洞或被攻击者利用，也能有效减少潜在的损害。
+           > 沙箱技术：Seccomp 可以将进程置于一个受限环境中运行，这种环境下的进程只能执行预定义的一组系统调用，超出此范围的任何调用都会导致进程被终止或接收到信号。
+           > 适用场景：特别适合于需要处理不可信输入的应用程序，例如网络服务和客户端应用，以提高这些应用的安全性。
+           > 历史与发展：Seccomp 最初是在 Linux 内核 2.6.12 版本中引入的，随着时间的发展，它经历了多次改进，增加了更多灵活的配置选项，比如 Seccomp-BPF，允许更细粒度地控制哪些系统调用可以被允许或拒绝。
+           > Seccomp 在现代云计算平台如 Kubernetes 中也得到了广泛应用，用于增强容器化应用的安全性。通过配置 Seccomp 策略，管理员能够进一步限制容器内的应用所能执行的操作，从而提升整个系统的安全性
+
+           - 下面是一个示例 Seccomp 配置，用于禁止进程执行 open 和 openat 系统调用，从而防止文件被打开和写入。这个配置使用了 Seccomp-BPF，可以通过 JSON 格式在 Docker 或 Kubernetes 中应用
+
+             ```json
+             {
+               "defaultAction": "SCMP_ACT_ERRNO",
+               "architectures": [
+                 "SCMP_ARCH_X86_64",
+                 "SCMP_ARCH_X86",
+                 "SCMP_ARCH_X32"
+               ],
+               "syscalls": [
+                 {
+                   "name": "open",
+                   "action": "SCMP_ACT_ERRNO",
+                   "args": []
+                 },
+                 {
+                   "name": "openat",
+                   "action": "SCMP_ACT_ERRNO",
+                   "args": []
+                 }
+               ]
+             }
+             ```
+
+             - 解释
+               - defaultAction: 默认操作，这里设置为 SCMP_ACT_ERRNO，表示当进程尝试执行未在 syscalls 列表中明确允许的系统调用时，返回一个错误码（通常是 EPERM）。
+               - architectures: 指定支持的架构，这里包括 x86_64、x86 和 x32。
+               - syscalls: 列出需要特别处理的系统调用及其操作：
+               - open: 禁止 open 系统调用。
+               - openat: 禁止 openat 系统调用。
+
+     5. 运行环境隔离
+
+        - Docker 实现运行环境的隔离
+
+## 开发插件
+
+### IDEA 插件
 
 - Mybatis X
 
@@ -688,6 +1839,12 @@ const visibleRoutes = routes.filter((item) => {
 
   > 处理字符串格式 
 
+### WebStorm 插件
+
+- IntelliVue
+
+  > 可快捷创建组件文件
+
 ## 编程经验
 
 ### 1. 主键 id 设置为自增容易被他人爬虫
@@ -707,3 +1864,80 @@ const visibleRoutes = routes.filter((item) => {
 >  `type = IdType.AUTO ` 指定主键的生成策略为自动增长
 >
 > `type = IdType.ASSIGN_UUID` 表示主键的生成策略是使用UUID
+
+### 2. git 拉取代码时会自动将换行符（LF）转换成（CRLF）
+
+> git 拉取代码时会自动将换行符（LF）转换成（CRLF）,导致 EsLint 等插件一堆爆红
+>
+> 解决方案：关闭 git 拉取代码的换行符转换，并重新拉取一遍代码
+>
+> ```bash
+> git config --global core.autocrlf input   
+> ```
+
+
+
+### 3. java 代码编译运行后终端输出乱码
+
+- 可以修改终端的编码格式
+
+  ```bash
+  # 936 是 gbk，65001 是 utf-8
+  chcp 65001
+  ```
+
+- 或者编译时指定编码格式
+
+  ```bash
+  javac -encoding utf-8 java文件
+  ```
+
+
+### 4. maven 相关命令
+
+```bash
+# 查看 maven 版本
+mvn -v
+# maven 运行 spring-boot 项目
+mvn spring-boot:run
+# maven 构建打包
+mvn package
+```
+
+### 5.其他命令
+
+```bash
+# 运行 jar 包
+java -jar jar包所在位置 --spring.profiles.active=prod
+
+# 开启远程调试 jvm
+java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005 -jar kkoj-code-sandbox-0.0.1-SNAPSHOT.jar
+
+# 开启服务器端口
+firewall-cmd --zone=public --add-port=5005/tcp --permanent
+# 重新加载防火墙
+firewall-cmd --reload
+netstat -ntulp |grep 5005
+```
+
+### 6. docker 拉取镜像超时
+
+- 由于不可抗因素，国内是无法在 DockerHub 上 pull 镜像的，并且很多国内 docker 镜像源无法使用，以下是搜集的一些可用镜像源
+
+  `/etc/docker/daemon.json`
+
+  ```json
+  {
+      "registry-mirrors": [
+          "https://dockerpull.com",
+          "https://dockerproxy.cn",
+          "https://docker.nju.edu.cn/",
+          "https://docker.m.daocloud.io",
+          "https://docker.1panel.live",
+          "https://dockerproxy.1panel.live",
+          "https://proxy.1panel.live"
+      ]
+  }
+  ```
+
+- 参考：https://jasonkayzk.github.io/2024/08/22/2024%E5%B9%B4%E5%AE%89%E8%A3%85Docker%E7%9A%84%E6%96%B9%E6%B3%95/
