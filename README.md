@@ -876,230 +876,6 @@ const visibleRoutes = routes.filter((item) => {
     - Java 原生实现
   - 调用第三方代码沙箱（别人的 api 接口）
 
-#### 使用的设计模式
-
-**工厂模式**
-
-- 使用静态工厂模式，来获取指定的代码沙箱实例去调用指定的代码沙箱，而非通过 `new` 的方式创建指定的代码沙箱实例，提高通用性和扩展性
-
-  - 多例
-
-    ```java
-    /**
-     * 静态代码沙箱工厂类
-     */
-    public class CodeSandBoxFactory {
-    
-        /**
-         * 获取对应的沙箱实例
-         *
-         * @param type 沙箱类型
-         * @return
-         */
-        public static CodeSandBox newInstance(String type) {
-            switch (type){
-                case "remote":
-                    return new RemoteCodeSandBox();
-                case "thirdParty":
-                    return new ThirdPartyCodeSandBox();
-                default:
-                    return new ExampleCodeSandBox();
-            }
-        }
-    }
-    
-    ```
-
-  - 单例
-
-    ```java
-    /**
-     * 单例静态代码沙箱工厂类
-     */
-    public class CodeSandBoxFactory {
-        private static final Map<String, CodeSandBox> codeSandBoxMap = new HashMap<>();
-    
-        static {
-            codeSandBoxMap.put("example", new ExampleCodeSandBox());
-            codeSandBoxMap.put("remote", new RemoteCodeSandBox());
-            codeSandBoxMap.put("thirdParty", new ThirdPartyCodeSandBox());
-        }
-    
-        /**
-         * 获取对应的沙箱实例
-         *
-         * @param type 沙箱类型
-         * @return
-         */
-        public static CodeSandBox newInstance(String type) {
-            return codeSandBoxMap.get(type);
-        }
-    }
-    ```
-
-  - 沙箱类型配置化，在配置文件中指定沙箱类型，可通过`@Value()` 注解获取到配置信息
-
-    ```yaml
-    codesandbox:
-      type: "example"
-    ```
-
-  - 创建实例方式
-
-    ```java
-    @Value("${codesandbox.type:example}")
-    private String type;
-    
-    CodeSandBox codeSandBox = new CodeSandBoxFactory().newInstance(type);
-    ```
-
-**代理模式**
-
-- 使用静态代理模式，对代码沙箱进行能力增强，如打印日志信息，这样可无需在每个代码沙箱实现的地方都输出日志信息，无需变动原始代码
-
-  ```java
-  /**
-   * 代码沙箱代理类
-   */
-  @Slf4j
-  public class CodeSandBoxProxy implements CodeSandBox {
-  
-      private CodeSandBox codeSandBox;
-      
-      public CodeSandBoxProxy(CodeSandBox codeSandBox) {
-          this.codeSandBox = codeSandBox;
-      }
-      
-      /**
-       * 执行代码
-       *
-       * @param executeCodeRequest
-       * @return
-       */
-      @Override
-      public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
-          log.info("代码沙箱执行请求信息"+ executeCodeRequest.toString());
-          // 执行原始代码沙箱功能
-          ExecuteCodeResponse executeCodeResponse = codeSandBox.executeCode(executeCodeRequest);
-          if (executeCodeResponse != null){
-              log.info("代码沙箱执行响应信息"+ executeCodeResponse.toString());
-          }else {
-              log.info("代码沙箱执行响应信息为空");
-          }
-          return executeCodeResponse;
-      }
-  }
-  ```
-
-- 使用方式
-
-  ```java
-  @SpringBootTest
-  class CodeSandBoxTest {
-  
-      @Value("${codesandbox.type:example}")
-      private String type;
-      
-      @Test
-      void executeCode() {
-          CodeSandBox codeSandBox = new CodeSandBoxFactory().newInstance(type);
-          CodeSandBoxProxy codeSandBoxProxy = new CodeSandBoxProxy(codeSandBox);
-          String code = "public class Main {public static void main(String[] args) {System.out.println(\"Hello World\");}}";
-          String language = QuestionLanguageEnum.JAVA.getValue();
-          List<String> inputList = Arrays.asList("1 2", "3 4");
-  
-          ExecuteCodeRequest executeCodeRequest = ExecuteCodeRequest.builder()
-                  .inputList(inputList)
-                  .language(language)
-                  .code(code)
-                  .build();
-          codeSandBoxProxy.executeCode(executeCodeRequest);
-      }
-  }
-  ```
-
-**策略模式**
-
--  使用策略模式，用于区分不同场景下不同的实现逻辑，例如：编程语言不同，判题的逻辑会不一样
-
-  - 当策略接口需要传递的参数不确定时，可以创建一个 context 类，在该类里面封装需要传递的参数
-  - 具体的实现类只需要实现策略接口即可
-  - 当策略实现类很多时，可以通过创建 manager 管理策略，简化调用
-
-  ```java
-  /**
-   * 判题策略接口
-   */
-  public interface JudgeStrategy {
-      /**
-       * 执行判题
-       * @param judgeContext
-       * @return
-       */
-      JudgeInfo judge(JudgeContext judgeContext);
-  }
-  ```
-
-  ```java
-  /**
-   * 判题策略上下文
-   * @author lhk
-   */
-  @Data
-  public class JudgeContext {
-  
-      /**
-       * 判题信息
-       */
-      private JudgeInfo judgeInfo;
-  
-      /**
-       * 输入用例列表
-       */
-      private List<String> inputList;
-  
-      /**
-       * 经过代码沙箱后的输出用例列表
-       */
-      private List<String> outputList;
-  
-      /**
-       * 题目信息
-       */
-      private Question question;
-  
-      /**
-       * 标准判题输入输出用例列表 [输入用例，标准输出用例]
-       */
-      private List<JudgeCase> judgeCaselist;
-  
-  }
-  ```
-
-  ```java
-  /**
-   * 判题策略管理
-   */
-  public class JudgeManager {
-      /**
-       * 区分不同的判题策略，执行判题
-       * @param judgeContext
-       * @return
-       */
-      JudgeInfo judge(JudgeContext judgeContext){
-          QuestionSubmit questionSubmit = judgeContext.getQuestionSubmit();
-          String language = questionSubmit.getLanguage();
-          JudgeStrategy judgeStrategy = new DefaultJudgeStrategyImpl();
-          if (language.equals("java")){
-              judgeStrategy = new JavaJudgeStrategyImpl();
-          }
-          return judgeStrategy.judge(judgeContext);
-      }
-  }
-  ```
-
-  
-
 ####  判题服务开发
 
 - 判题服务是在题目提交的时候进行调用
@@ -1814,7 +1590,368 @@ const visibleRoutes = routes.filter((item) => {
 
         - Docker 实现运行环境的隔离
 
-## 开发插件
+#### 使用到的设计模式
+
+##### 工厂模式
+
+- 使用静态工厂模式，来获取指定的代码沙箱实例去调用指定的代码沙箱，而非通过 `new` 的方式创建指定的代码沙箱实例，提高通用性和扩展性
+
+  - 多例
+
+    ```java
+    /**
+     * 静态代码沙箱工厂类
+     */
+    public class CodeSandBoxFactory {
+    
+        /**
+         * 获取对应的沙箱实例
+         *
+         * @param type 沙箱类型
+         * @return
+         */
+        public static CodeSandBox newInstance(String type) {
+            switch (type){
+                case "remote":
+                    return new RemoteCodeSandBox();
+                case "thirdParty":
+                    return new ThirdPartyCodeSandBox();
+                default:
+                    return new ExampleCodeSandBox();
+            }
+        }
+    }
+    
+    ```
+
+  - 单例
+
+    ```java
+    /**
+     * 单例静态代码沙箱工厂类
+     */
+    public class CodeSandBoxFactory {
+        private static final Map<String, CodeSandBox> codeSandBoxMap = new HashMap<>();
+    
+        static {
+            codeSandBoxMap.put("example", new ExampleCodeSandBox());
+            codeSandBoxMap.put("remote", new RemoteCodeSandBox());
+            codeSandBoxMap.put("thirdParty", new ThirdPartyCodeSandBox());
+        }
+    
+        /**
+         * 获取对应的沙箱实例
+         *
+         * @param type 沙箱类型
+         * @return
+         */
+        public static CodeSandBox newInstance(String type) {
+            return codeSandBoxMap.get(type);
+        }
+    }
+    ```
+
+  - 沙箱类型配置化，在配置文件中指定沙箱类型，可通过`@Value()` 注解获取到配置信息
+
+    ```yaml
+    codesandbox:
+      type: "example"
+    ```
+
+  - 创建实例方式
+
+    ```java
+    @Value("${codesandbox.type:example}")
+    private String type;
+    
+    CodeSandBox codeSandBox = new CodeSandBoxFactory().newInstance(type);
+    ```
+
+##### 代理模式
+
+- 使用静态代理模式，对代码沙箱进行能力增强，如打印日志信息，这样可无需在每个代码沙箱实现的地方都输出日志信息，无需变动原始代码
+
+  ```java
+  /**
+   * 代码沙箱代理类
+   */
+  @Slf4j
+  public class CodeSandBoxProxy implements CodeSandBox {
+  
+      private CodeSandBox codeSandBox;
+      
+      public CodeSandBoxProxy(CodeSandBox codeSandBox) {
+          this.codeSandBox = codeSandBox;
+      }
+      
+      /**
+       * 执行代码
+       *
+       * @param executeCodeRequest
+       * @return
+       */
+      @Override
+      public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
+          log.info("代码沙箱执行请求信息"+ executeCodeRequest.toString());
+          // 执行原始代码沙箱功能
+          ExecuteCodeResponse executeCodeResponse = codeSandBox.executeCode(executeCodeRequest);
+          if (executeCodeResponse != null){
+              log.info("代码沙箱执行响应信息"+ executeCodeResponse.toString());
+          }else {
+              log.info("代码沙箱执行响应信息为空");
+          }
+          return executeCodeResponse;
+      }
+  }
+  ```
+
+- 使用方式
+
+  ```java
+  @SpringBootTest
+  class CodeSandBoxTest {
+  
+      @Value("${codesandbox.type:example}")
+      private String type;
+      
+      @Test
+      void executeCode() {
+          CodeSandBox codeSandBox = new CodeSandBoxFactory().newInstance(type);
+          CodeSandBoxProxy codeSandBoxProxy = new CodeSandBoxProxy(codeSandBox);
+          String code = "public class Main {public static void main(String[] args) {System.out.println(\"Hello World\");}}";
+          String language = QuestionLanguageEnum.JAVA.getValue();
+          List<String> inputList = Arrays.asList("1 2", "3 4");
+  
+          ExecuteCodeRequest executeCodeRequest = ExecuteCodeRequest.builder()
+                  .inputList(inputList)
+                  .language(language)
+                  .code(code)
+                  .build();
+          codeSandBoxProxy.executeCode(executeCodeRequest);
+      }
+  }
+  ```
+
+##### 策略模式
+
+- 使用策略模式，用于区分不同场景下不同的实现逻辑，例如：编程语言不同，判题的逻辑会不一样
+
+  - 当策略接口需要传递的参数不确定时，可以创建一个 context 类，在该类里面封装需要传递的参数
+  - 具体的实现类只需要实现策略接口即可
+  - 当策略实现类很多时，可以通过创建 manager 管理策略，简化调用
+
+  ```java
+  /**
+   * 判题策略接口
+   */
+  public interface JudgeStrategy {
+      /**
+       * 执行判题
+       * @param judgeContext
+       * @return
+       */
+      JudgeInfo judge(JudgeContext judgeContext);
+  }
+  ```
+
+  ```java
+  /**
+   * 判题策略上下文
+   * @author lhk
+   */
+  @Data
+  public class JudgeContext {
+  
+      /**
+       * 判题信息
+       */
+      private JudgeInfo judgeInfo;
+  
+      /**
+       * 输入用例列表
+       */
+      private List<String> inputList;
+  
+      /**
+       * 经过代码沙箱后的输出用例列表
+       */
+      private List<String> outputList;
+  
+      /**
+       * 题目信息
+       */
+      private Question question;
+  
+      /**
+       * 标准判题输入输出用例列表 [输入用例，标准输出用例]
+       */
+      private List<JudgeCase> judgeCaselist;
+  
+  }
+  ```
+
+  ```java
+  /**
+   * 判题策略管理
+   */
+  public class JudgeManager {
+      /**
+       * 区分不同的判题策略，执行判题
+       * @param judgeContext
+       * @return
+       */
+      JudgeInfo judge(JudgeContext judgeContext){
+          QuestionSubmit questionSubmit = judgeContext.getQuestionSubmit();
+          String language = questionSubmit.getLanguage();
+          JudgeStrategy judgeStrategy = new DefaultJudgeStrategyImpl();
+          if (language.equals("java")){
+              judgeStrategy = new JavaJudgeStrategyImpl();
+          }
+          return judgeStrategy.judge(judgeContext);
+      }
+  }
+  ```
+
+
+##### 模板方法模式
+
+- 使用模板方法模式优化多个实现代码沙箱的核心流程
+
+  - 由于代码沙箱实现的流程基本上一致，因此可以将流程抽象成一个模板，具体的代码沙箱实现类继承该模板类，就可以在该类中对具体的某一部分流程进行覆盖
+  - 模板方法的适用场景:适用于有规范的流程，且执行流程可以复用
+  - 好处：可以大幅省略重复代码
+
+- 流程：
+
+  - 抽象出具体的流程（Template 类）
+
+    ```java
+    public class CodeSandBoxTemplate implements CodeSandBox{
+     @Override
+        public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
+    		//1
+            File userCodeFile = saveCodeFile(executeCodeRequest);
+    		//2
+            ExecuteMessage compileMessage = compileCodeFile(userCodeFile);
+            System.out.println("编译结果" + compileMessage);
+    		//3
+            List<ExecuteMessage> execMessageList = executeCodeFile(userCodeFile, executeCodeRequest.getInputList());
+    		//4
+            ExecuteCodeResponse executeCodeResponse = getExecuteCodeResponse(execMessageList);
+    		//5
+            boolean isDelete = deleteCodeFile(userCodeFile);
+            if (!isDelete){
+                log.error("文件删除失败,路径 {}", userCodeFile.getPath());
+            }
+            return executeCodeResponse;
+        }
+        
+        ...具体方法实现...
+    }
+    ```
+
+  - 子类继承模板类，可以对具体某一个流程的方法进行覆盖
+
+    ```java
+    /**
+     * 使用模板方法设计模式优化 java 原生实现的代码沙箱
+     */
+    public class NativeCodeSandBox extends CodeSandBoxTemplate{
+    
+        @Override
+        public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
+            return super.executeCode(executeCodeRequest);
+        }
+    }
+    ```
+
+#### 代码沙箱提供 API 接口
+
+- 在controller 层暴露代码沙箱的调用接口
+
+  ```java
+      @Resource
+      private JavaNativeCodeSandBox javaNativeCodeSandBox;
+  
+      /**
+       * 调用代码沙箱接口
+       *
+       * @param executeCodeRequest
+       * @return
+       */
+      @PostMapping("/executeJavaCode")
+      public ExecuteCodeResponse executeJavaCode(ExecuteCodeRequest executeCodeRequest) {
+          return javaNativeCodeSandBox.executeCode(executeCodeRequest);
+      }
+  ```
+
+- 调用方对该接口发送 http 请求即可进行调用
+
+- 需要考虑接口调用的安全性
+
+  - 如果接口不做任何鉴权就发布到公网，是不安全的
+
+  - 解决方案
+
+    1. 若是内部服务互相调用的接口（不发布到公网的接口），调用方与被调用方之间可以约定好一个字符串（需要加密），调用方将该字符串放在请求头里，被调用方通过验证该请求头进行接口鉴权
+
+       - 优点：简单易实现，适用于内部服务互相调用的接口
+       - 缺点：不够灵活，且秘钥一旦暴露依然会不安全，并且变更秘钥还需要重启服务
+
+       ```java
+           private static final String AUTH_REQUEST_HEADER = "apiAuth";
+           private static final String AUTH_REQUEST_SECRET = "secret";
+           
+           
+           /**
+            * 调用代码沙箱接口
+            *
+            * @param executeCodeRequest
+            * @return
+            */
+           @PostMapping("/executeJavaCode")
+           public ExecuteCodeResponse executeJavaCode(@RequestBody ExecuteCodeRequest executeCodeRequest,
+                                                      HttpServletRequest request,
+                                                      HttpServletResponse response) {
+               String authSecret = request.getHeader(AUTH_REQUEST_HEADER);
+               if (!AUTH_REQUEST_SECRET.equals(authSecret)) {
+                   response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                   return new ExecuteCodeResponse(null, "auth failed", 0, null);
+               }
+               return javaNativeCodeSandBox.executeCode(executeCodeRequest);
+           }
+       ```
+
+       ```java
+           private static final String AUTH_REQUEST_HEADER = "apiAuth";
+           private static final String AUTH_REQUEST_SECRET = "secret";
+       
+           @Override
+           public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
+               System.out.println("远程代码沙箱");
+               String url = "http://192.168.xxx.xxx:8102/executeJavaCode";
+               String body = JSONUtil.toJsonStr(executeCodeRequest);
+               String responseStr = HttpUtil.createPost(url)
+                       .header(AUTH_REQUEST_HEADER, AUTH_REQUEST_SECRET)
+                       .body(body)
+                       .execute()
+                       .body();
+               if (StringUtils.isBlank(responseStr)){
+                   throw new BusinessException(ErrorCode.API_REQUEST_ERROR, "远程代码沙箱运行失败");
+               }
+               return JSONUtil.toBean(responseStr, ExecuteCodeResponse.class);
+           }
+       ```
+
+    2. API 签名认证
+       
+       - 给允许调用的人员分配 accessKey、secretKey，然后校验这两组 key 是否匹配
+
+## 五、微服务改造
+
+
+
+## 六、开发插件
 
 ### IDEA 插件
 
@@ -1845,7 +1982,7 @@ const visibleRoutes = routes.filter((item) => {
 
   > 可快捷创建组件文件
 
-## 编程经验
+## 七、编程经验
 
 ### 1. 主键 id 设置为自增容易被他人爬虫
 
