@@ -170,6 +170,7 @@ create table if not exists question_submit
 - 其他
   - 虚拟机
   - docker
+  - spring boot
   - spring cloud 微服务
   - 消息队列
 
@@ -1947,9 +1948,753 @@ const visibleRoutes = routes.filter((item) => {
        
        - 给允许调用的人员分配 accessKey、secretKey，然后校验这两组 key 是否匹配
 
-## 五、微服务改造
+## 五、单体项目改造成 spring cloud alibaba 微服务项目
 
+### 微服务
 
+- 微服务定义
+  - 微服务架构是一种设计软件应用的方法，它将一个大型的应用程序分解为一组小的、独立的服务，每个服务运行在其自己的进程中，并通过轻量级机制（通常是 HTTP API）进行通信。
+  - 独立部署：每个服务可以独立部署、扩展和更新，而不会影响其他服务。
+  - 技术多样性：不同的服务可以根据需求选择最适合的技术栈。
+- 微服务框架：本质上是通过 HTTP 协议或者其他网络协议进行通讯来实现的
+  - spring cloud
+  - spring cloud alibaba
+  - dubbo（DubboX）
+  - RPC（GRPC、TRPC）
+
+#### 真的有必要使用微服务嘛？
+
+- 企业内部一般都是使用 API（RPC、HTTP）实现跨部门、跨服务的调用，数据格式和调用代码全部自动生成，保持统一同时解耦
+
+### spring cloud alibaba
+
+- 官网：[Spring Cloud Alibaba官网_基于Springboot的微服务教程-阿里云](https://sca.aliyun.com/)
+
+- 组件
+
+  1. Spring Cloud Gateway：网关
+
+  2. Nacos：服务注册和配置中心
+
+  3. Sentinel：熔断限流
+
+  4. Seata：分布式事务
+
+  5. RocketMQ：消息队列，削峰填谷
+
+  6. Docker：使用Docker进行容器化部署
+
+  7. Kubernetes：使用k8s进行容器化部署
+
+- 最佳实践：[最佳实践示例-阿里云Spring Cloud Alibaba官网](https://sca.aliyun.com/docs/2021/best-practice/integrated-example/?spm=5176.29160081.0.0.71a134bfkBFxCL)
+
+### 改造 kkoj
+
+#### 改造需要考虑的问题
+
+- 从业务需求出发，考虑单机跟分布式的区别
+  - 用户登录功能需要改造为分布式登录
+  - 其他
+    - 项目是否用的单机锁？需要将单机多改造为分布式锁
+    - 是否使用了本地缓存？
+    - 是否需要使用到分布式事务？
+
+#### 改造分布式登录
+
+- 引入 redis 和分布式 session 依赖
+
+  ```xml
+          <!-- redis -->
+          <dependency>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-data-redis</artifactId>
+          </dependency>
+          <dependency>
+              <groupId>org.springframework.session</groupId>
+              <artifactId>spring-session-data-redis</artifactId>
+          </dependency>
+  ```
+
+- 引入 reids 自动加载类
+
+  ```java
+  // todo 如需开启 Redis，须移除 exclude 中的内容
+  @SpringBootApplication(exclude = {RedisAutoConfiguration.class})
+  ```
+
+- 配置 redis
+
+  ```yml
+    # Redis 配置
+    redis:
+      database: 1
+      host: localhost
+      port: 6379
+      timeout: 5000
+      password: 123456
+  ```
+
+- 配置 session 存储方式
+
+  ```yaml
+    # session 配置
+    session:
+      # 开启分布式 session（须先配置 Redis）
+      store-type: redis
+      # 30 天过期
+      timeout: 2592000
+  ```
+
+#### 微服务的划分 
+
+- 只对 oj 后台系统进行拆分，不对 sandbox 系统进行划分
+- 从业务层面进行划分，考虑哪些业务可以放在一个服务里
+- 可以使用阿里提供的脚手架创建一个 spring cloud alibaba 项目
+  - 网站：[Cloud Native App Initializer](https://start.aliyun.com/)
+  - idea 插件也提供了该脚手架插件：Alibaba Cloud Toolkit
+
+##### 服务的划分
+
+1. 用户服务（user-service，8103）
+   - 登录
+   - 注册
+   - 用户管理
+2. 题目服务（question-service，8104）
+   - 创建题目
+   - 删除题目
+   - 修改题目
+   - 题目列表
+   - 在线做题（提交题目到判题模块）
+3. 判题服务（judge-service，8105）
+   - 执行判题逻辑
+   - 错误处理
+   - 调用沙箱
+4. 公共模块
+   - common 公共模块：全局异常处理器、请求响应服装类、公共工具类等.....
+   - model ： 共用的实体类模块
+   - service-client（共用接口模块）：只存放接口，不存放实现（多个服务直接共享的接口）,通过使用一些服务通讯手段（例如：Feign）调用实现类
+5. 需要依赖的服务
+   - 注册中心：nacos
+   - 微服务网关：gateway（聚合所有接口，实现接收前端发送的统一的请求派发至不同的端口接口）
+
+##### 接口路由的划分
+
+- 通过配置 springBoot 的 `server.servlet.context-path` 统一管理接口的前缀
+
+- 用户服务
+  - `/api/user`
+  - `/api/user/inner`（内部调用，网关层面需要做限制）
+- 题目服务
+  - `/api/question`
+  - `/api/question/inner`（内部调用，网关层面需要做限制）
+
+- 判题服务
+  - `/api/judge`
+  - `/api/judge/inner`（内部调用，网关层面需要做限制）
+
+##### nacos 注册中心
+
+- 参考: [Nacos 快速开始 | Nacos 官网](https://nacos.io/docs/v2/quickstart/quick-start/)
+
+- 使用时需要注意 springBoot 对应的 spring cloud 的版本和对应的 nacos 的版本
+
+  - nacos 可以在 github 中寻找对应的版本包
+
+  - windows 启动命令
+
+    ```bash
+    startup.cmd -m standalone
+    ```
+
+##### maven 定义子父工程项目
+
+- 使用脚手架创建一个微服务项目，可以减少一些版本冲突问题
+
+- 在微服务项目里面创建服务子模块
+
+- 在 pom.xml 文件中定义子父模块
+
+  - 在子模块 pom.xml 文件添加
+
+    ```xml
+    <parent>
+            <groupId>com.lhk</groupId>
+            <artifactId>kkoj-backend-micoservice</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+    </parent>
+    ```
+
+  - 在父项目的 pom.xml 文件中添加
+
+    ```xml
+        <modules>
+            <module>kkoj-backend-common</module>
+            <module>kkoj-backend-model</module>
+            <module>kkoj-backend-gateway</module>
+            <module>kkoj-backend-service-client</module>
+            <module>kkoj-backend-user-service</module>
+            <module>kkoj-backend-question-service</module>
+            <module>kkoj-backend-judge-service</module>
+        </modules>
+    ```
+
+##### 服务内部的调用（OpenFeign）
+
+- 当服务进行划分后，服务之间的相互依赖并不会通过传统的 bean 注入进行依赖，这会导致服务找不到 bean 而无法调用依赖的服务且项目无法启动，此时则需要使用一些远程调用组件（例如：**OpenFeign**）实现跨服务的远程接口调用，这是基于 http 协议进行的调用，而不再是传统单体项目的使用 bean 注入进行服务的调用。 
+
+- OpenFegin
+
+  - 文档：[Spring Cloud OpenFeign 中文文档](https://springdoc.cn/spring-cloud-openfeign/)
+  - 可以理解为一个用于发送请求的 http 客户端，通过配合 nacos 的注册中心获取服务地址，无需关心服务的调用地址，可以更好的调用内部服务
+  - 服务提供者
+  - 服务消费者
+
+- 在**服务提供方**开启 OpenFegin 的支持，可以将服务提供者提供的接口暴露出去（通过将服务注册到注册中心），作为 api 给其他服务于调用（其他服务从注册中心找）
+
+  - 对需要远程调用的接口使用 `Restful url` 进行定义  
+  - 不需要进行远程调用的接口，可以使用默认方法进行实现，减少远程调用的性能
+  - 实现注意：
+    - 给需要远程调用的接口方法上打上请求的注解，注意区分 Get、Post
+    - 给请求参数打上请求参数的注解，例如`@RequestParam`、`@RequestBody`
+    - 接口的请求路径需要和服务提供方提供的请求路径保持一致
+
+  ```java
+  /**
+   * 使用 OpenFeign 调用用户服务
+   */
+  @FeignClient(name = "kkoj-backend-user-service", path = "/api/user/inner")
+  public interface UserFeignClient {
+  
+      /**
+       * 获取一个用户的信息
+       *
+       * @param userId 用户 ID
+       * @return
+       */
+      @GetMapping("/get")
+      User getById(@RequestParam("userId") long userId);
+  
+      /**
+       * 获取多个用户的信息
+       *
+       * @param userIds 用户 ID
+       * @return
+       */
+      @GetMapping("/get/ids")
+      List<User> listByIds(@RequestParam("userIds") Collection<Long> userIds);
+  
+      /**
+       * 获取当前登录用户
+       *
+       * @param request
+       * @return
+       */
+      default User getLoginUser(HttpServletRequest request) {
+          // 先判断是否已登录
+          Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
+          User currentUser = (User) userObj;
+          if (currentUser == null || currentUser.getId() == null) {
+              throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
+          }
+          // 从数据库查询（追求性能的话可以注释，直接走缓存）
+          long userId = currentUser.getId();
+          currentUser = this.getById(userId);
+          if (currentUser == null) {
+              throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
+          }
+          return currentUser;
+      }
+  
+      /**
+       * 是否为管理员
+       *
+       * @param request
+       * @return
+       */
+      default boolean isAdmin(HttpServletRequest request) {
+          // 仅管理员可查询
+          Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
+          User user = (User) userObj;
+          return isAdmin(user);
+      }
+  
+      /**
+       * 是否为管理员
+       *
+       * @param user
+       * @return
+       */
+      default boolean isAdmin(User user) {
+          return user != null && UserRoleEnum.ADMIN.getValue().equals(user.getUserRole());
+      }
+  
+      /**
+       * 获取脱敏的用户信息
+       *
+       * @param user
+       * @return
+       */
+      default UserVO getUserVO(User user) {
+          if (user == null) {
+              return null;
+          }
+          UserVO userVO = new UserVO();
+          BeanUtils.copyProperties(user, userVO);
+          return userVO;
+      }
+  
+  }
+  ```
+
+- 在**服务调用方**注入服务提供方的 `FeignClient 组件`，进行接口远程调用
+
+  ```java
+      @Resource
+      private UserFeignClient userFeignClient;
+  ```
+
+- 在**服务提供方**编写`FeignClient` 的服务的实现类，url 路径以 `/inner` 开头的我金额口实现类
+
+  ```java
+  /**
+   * 服务内部调用的接口实现
+   */
+  @RestController
+  @RequestMapping("/inner")
+  public class InnerUserController implements UserFeignClient {
+      @Resource
+      private UserService userService;
+      @Override
+      @GetMapping("/get")
+      public User getById(@RequestParam("userId") long userId) {
+          return userService.getById(userId);
+      }
+  
+      @Override
+      @GetMapping("/get/ids")
+      public List<User> listByIds(@RequestParam("userIds") Collection<Long> userIds) {
+          return userService.listByIds(userIds);
+      }
+  }
+  ```
+
+- 配置 nacos 的服务发现，实现服务直接的互相发现
+
+  - 参考：[快速开始-阿里云Spring Cloud Alibaba官网](https://sca.aliyun.com/docs/2021/user-guide/nacos/quick-start/)
+
+  - 该项目只使用了服务发现功能，因此只需要引入以下的依赖
+
+    ```xml
+    <dependency>
+        <groupId>com.alibaba.cloud</groupId>
+        <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+    </dependency>
+    ```
+
+  - 在业务服务中配置 `nacos`  地址，除了 `model`、`commons`等模块
+
+    ```yml
+    spring:
+      cloud:
+        nacos:
+          discovery:
+            server-addr: 127.0.0.1:8848
+    ```
+
+  - 在服务的启动类上使用 `@EnableDiscoveryClient` 注解开启服务注册与发现功能，并在**服务调用方**的启动类上添加 `@EnableFeignClients` 注解开启服务的远程调用
+
+    ```java
+    @ComponentScan("com.lhk")
+    @EnableScheduling
+    @EnableAspectJAutoProxy(proxyTargetClass = true, exposeProxy = true)
+    @EnableDiscoveryClient
+    @EnableFeignClients(basePackages = {"com.lhk.kkojbackendserviceclient.service"})
+    @SpringBootApplication
+    public class KkojBackendJudgeServiceApplication {
+    	public static void main(String[] args) {
+    		SpringApplication.run(KkojBackendJudgeServiceApplication.class, args);
+    	}
+    }
+    ```
+
+  - 注意，需要全局引入一个负载均衡组件
+
+    ```xml
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-loadbalancer</artifactId>
+                <version>3.1.5</version>
+            </dependency>
+    ```
+
+- 启动项目，测试接口
+
+##### 微服务网关（Gateway）
+
+- 网关的分类
+  - 全局网关（接入层网关）：作用是负载均衡、请求日志，不和业务逻辑绑定，例如 nginx
+  - 业务网关（微服务网关）：还会有一些业务逻辑（比如通过与用户信息鉴权），作用是将请求转发到不同的业务/项目/接口/服务，例如 Spring Cloud Gateway
+
+- 为什么使用网关？
+
+  - 聚合所有接口，可以实现接收前端发送的统一的请求派发至不同端口服务的接口，便于前端处理接口的请求发送，无需单独对各个端口的接口进行请求，减小前端接口调用的成本
+  - 由于服务的端口不同，服务是分数的，使用网关可以对多个服务进行一些统一的管理，例如**集中解决跨域**、**鉴权**、**接口文档**、**服务的路由**、**接口安全性**、**流量染色**、**限流**等，这样就无需单独在每个服务内部进行处理
+  - Spring Cloud Gateway 缺点：需要自定义 Gateway 功能需要对账号和个数有比较深入的理解
+
+- 在网关模块引入依赖
+
+  ```xml
+          <dependency>
+              <groupId>org.springframework.cloud</groupId>
+              <artifactId>spring-cloud-starter-gateway</artifactId>
+          </dependency>
+  ```
+
+###### 接口路由
+
+- 配置接口路由
+
+  ```yml
+  spring:
+    application:
+      name: kkoj-backend-gateway
+    cloud:
+      nacos:
+        discovery:
+          server-addr: 127.0.0.1:8848
+      gateway:
+        routes:
+          - id: kkoj-backend-user-service
+            uri: lb://kkoj-backend-user-service
+            predicates:
+              - Path=/api/user/**
+          - id: kkoj-backend-question-service
+            uri: lb://kkoj-backend-question-service
+            predicates:
+              - Path=/api/question/**
+          - id: kkoj-backend-judge-service
+            uri: lb://kkoj-backend-judge-service
+            predicates:
+              - Path=/api/judge/**
+    main:
+      web-application-type: reactive
+  server:
+    port: 8101
+  ```
+
+###### 聚合接口文档
+
+- 使用 knife4j 接口文档生成器
+
+  1. 先给每个需要接口文档的子服务引入依赖，并配置 knife4j
+
+     - 参考：[快速开始 | Knife4j](https://doc.xiaominfo.com/docs/quick-start#openapi2)
+
+     - 配置
+
+       ```yml
+       knife4j:
+         enable: true
+       ```
+
+  2. 给网关配置集中管理文档
+
+     - 参考文档：[Spring Cloud Gateway网关聚合 | Knife4j](https://doc.xiaominfo.com/docs/middleware-sources/spring-cloud-gateway/spring-gateway-introduction#服务发现模式discover)、[Spring Cloud Gateway网关下的文档聚合?就用它了 | Knife4j](https://doc.xiaominfo.com/docs/blog/gateway/knife4j-gateway-introduce#42-服务发现自动聚合discover)
+
+     - 引入依赖
+
+       ```xml
+       <dependency>
+           <groupId>com.github.xiaoymin</groupId>
+           <artifactId>knife4j-gateway-spring-boot-starter</artifactId>
+           <version>4.4.0</version>
+       </dependency>
+       ```
+
+     - 服务发现自动聚合配置
+
+       ```yml
+       knife4j:
+         gateway:
+           # ① 第一个配置，开启gateway聚合组件
+           enabled: true
+           # ② 第二行配置，设置聚合模式采用discover服务发现的模式
+           strategy: discover
+           discover:
+             # ③ 第三行配置，开启discover模式
+             enabled: true
+             # ④ 第四行配置，聚合子服务全部为Swagger2规范的文档
+             version: swagger2
+       ```
+
+     - 接口文档访问网站：`http://{gateway.host}:{gateway.port}/doc.html`
+
+###### 分布式 session 登录
+
+- 由于微服务项目将用户服务单独作为一个服务，若不实现 session 共享，则会导致其他服务中需要使用用户登录信息的功能无法获取到用户信息，因此需要使用 redis 实现分布式 session 共享，将用户登录的 session 信息存储在 reids 中
+
+- 依赖
+
+  ```xml
+          <!-- redis -->
+          <dependency>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-data-redis</artifactId>
+          </dependency>
+          <dependency>
+              <groupId>org.springframework.session</groupId>
+              <artifactId>spring-session-data-redis</artifactId>
+          </dependency>
+  ```
+
+- 配置 redis
+
+  ```yml
+  spring:
+    # session 配置
+    session:
+      # 开启分布式 session（须先配置 Redis）
+      store-type: redis
+      # 30 天过期
+      timeout: 2592000
+    # Redis 配置
+    redis:
+      database: 1
+      host: 192.168.xxx.xxx
+      port: 6379
+      timeout: 5000
+      password: xxxxxx
+  ```
+
+- 注意：需要解决 cookie 跨路径问题
+
+  - 开启分布式 session 后发现用户登录的 session 信息已经存入 redis，但是其他的微服务依然服务获取到共享的 session 信息，原因是因为每个微服务的 session 的获取路径不同，因此导致每个服务获取的 session 信息不同
+
+    ![](README.assets/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202024-12-16%20163543.png)
+
+  - 在每个服务添加`path`配置
+
+    ```yml
+    server:
+      address: 0.0.0.0
+      port: 8105
+      servlet:
+        context-path: /api/judge
+        # cookie 30 天过期
+        session:
+          cookie:
+            max-age: 2592000
+            path: /api  #统一 session 信息的获取位置
+    ```
+
+- 使用无痕浏览器进行调试
+
+###### 解决跨域
+
+- 在网关引入跨域过滤器配置
+
+  ```java
+  /**
+   * spring cloud GateWay 处理跨域
+   */
+  @Configuration
+  public class CorsConfig {
+  
+      @Bean
+      public CorsWebFilter corsWebFilter() {
+          CorsConfiguration corsConfiguration = new CorsConfiguration();
+          corsConfiguration.addAllowedMethod("*");
+          corsConfiguration.setAllowCredentials(true);
+          //此处填写允许跨域的域名，上线改为 线上真实域名 和 本地域名，不建议使用 *
+          corsConfiguration.setAllowedOriginPatterns(Arrays.asList("*"));
+          corsConfiguration.addAllowedHeader("*");
+          UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource(new PathPatternParser());
+          source.registerCorsConfiguration("/**", corsConfiguration);
+          return new CorsWebFilter(source);
+      }
+  }
+  ```
+
+  - 这段代码定义了一个 `CorsWebFilter Bean`，用于配置跨域资源共享（CORS）。具体功能如下：
+    1. 创建 CorsConfiguration 对象：初始化 CORS 配置。
+    2. 设置允许的方法：允许所有 HTTP 方法（*）
+    3. 设置凭证支持：允许发送凭证（如 cookies）
+    4. 设置允许的源：允许所有源（*），建议上线时修改为实际域名。
+    5. 设置允许的头部：允许所有头部（*）
+    6. 创建 UrlBasedCorsConfigurationSource 对象：使用路径模式解析器。
+    7. 注册 CORS 配置：将 CORS 配置应用到所有路径（/**）
+    8. 返回 CorsWebFilter 对象：创建并返回 CorsWebFilter，用于处理 CORS 请求
+
+###### 接口权限校验
+
+- 接口有些是对外开放的，有些是服务内部使用的（比如带`/inner`的接口），因此需要对这些接口进行权限校验，防止内部使用的接口对外开放
+
+- 解决方案
+
+  - 可以使 spring cloud gateway 中使用 filter 来对请求进行拦截处理，在 filter 中根据请求的路径来判断接口是否可以访问
+
+    ```java
+    /**
+     * 接口校验过滤器
+     */
+    @Component
+    @Order(0)
+    public class GlobalAuthFilter implements GlobalFilter {
+    
+        private AntPathMatcher antPathMatcher = new AntPathMatcher();
+        @Override
+        public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+            String path = exchange.getRequest().getURI().getPath();
+            // 带有 /inner 的路径为服务内部调用的接口
+            if (antPathMatcher.match("/**/inner/**", path)){
+                ServerHttpResponse response = exchange.getResponse();
+                response.setStatusCode(HttpStatus.FORBIDDEN);
+                DataBufferFactory dataBufferFactory = response.bufferFactory();
+                DataBuffer dataBuffer = dataBufferFactory.wrap(String.valueOf("无权限").getBytes(StandardCharsets.UTF_8));
+                return response.writeWith(Mono.just(dataBuffer));
+            }
+            // 扩展点： 可以在此处进行用户权限校验，比如判断用户是否登录等，由于此处使用的是响应式编程，可以使用 jwt 技术获取用户的信息比较方便
+            return chain.filter(exchange);
+        }
+    }
+    ```
+
+###### 网关层面的限流降级
+
+- 可以在网关实现 sentinel 接口限流降级
+  - 参考：[快速开始-阿里云Spring Cloud Alibaba官网](https://sca.aliyun.com/docs/2021/user-guide/sentinel/quick-start/)
+- **Redisson RateLimiter** 也可以实现限流
+
+#### 使用消息队列解耦
+
+- 使用 RabbitMQ 消息队列进行解耦 3.12.0  3.12.4
+- 逻辑
+  - 解耦题目服务和判题服务，题目服务只需要负责题目的相关操作，然后往消息队列发送判题消息即可；判题服务专注判题逻辑的实现，然后从消息队列中取消息去执行判题逻辑，判题完后异步更新数据库即可
+
+- 在消费者和生产者模块中引入依赖
+
+  ```xml
+          <!-- https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-amqp -->
+          <dependency>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-amqp</artifactId>
+          </dependency>
+  ```
+
+- 配置 RabbitMQ 的信息
+
+  ```yml
+  spring:
+    rabbitmq:
+      host: localhost
+      port: 5672
+      password: guest
+      username: guest
+  ```
+
+- 创建交换机和队列
+
+  - 一般在消费者模块中编写，因为上线时会先启动消费者，在模块的启动类进行调用可以达到项目启动时初始化 RabbitMQ 的效果
+
+    ```java
+    /**
+     * 初始化 RabbitMq，创建交换机、队列、绑定
+     */
+    @Slf4j
+    public class InitRabbitMq {
+        public static void doInit() {
+            try {
+                ConnectionFactory connectionFactory = new ConnectionFactory();
+                connectionFactory.setHost("localhost");
+                Connection connection = connectionFactory.newConnection();
+                Channel channel = connection.createChannel();
+                //交换机
+                String judgeExchangeName = "judge_exchange";
+                channel.exchangeDeclare(judgeExchangeName, "direct");
+                //队列
+                String judgeQueueName = "judge_queue";
+                channel.queueDeclare(judgeQueueName, true, false, false, null);
+                //绑定交换机和队列
+                channel.queueBind(judgeQueueName, judgeExchangeName, "judge_routing_key");
+                log.info("启动并初始化 RabbitMq 成功");
+            } catch (IOException e) {
+                log.info("启动并初始化 RabbitMq 失败");
+                throw new RuntimeException(e);
+            } catch (TimeoutException e) {
+                log.info("连接 RabbitMq 超时");
+                throw new RuntimeException(e);
+            }
+        }
+    }
+    ```
+
+- 在生产者模块编写发送消息的组件
+
+  ```java
+  @Component
+  public class RabbitMessageProducer {
+      @Resource
+      private RabbitTemplate rabbitTemplate;
+  
+      /**
+       * 生产者发送消息
+       *
+       * @param exchange   交换机
+       * @param routingKey 路由键
+       * @param message    消息
+       */
+      public void sendMessage(String exchange, String routingKey, Object message) {
+          rabbitTemplate.convertAndSend(exchange, routingKey, message);
+      }
+  }
+  ```
+
+  - 并在使用消息队列的地方发送消息
+
+    ```java
+            Long questionSubmitId = questionSubmit.getId();
+            // 异步将提交信息交给判题服务进行判题，提高系统响应速率
+    //        CompletableFuture.runAsync(() -> {
+    //            judgeFeignClient.JudgeQuestion(questionSubmitId);
+    //        });
+            // 使用 RabbitMQ, 将题目提交 id 发送到消息队列中，由消费者获取题目提交 id 进行其他处理
+            rabbitMessageProducer.sendMessage("judge_queue", "judge_exchange", String.valueOf(questionSubmitId));
+    ```
+
+- 在消费者模块编写接收消息的组件并且处理后续业务
+
+  ```java
+  /**
+   * 消息消费者
+   */
+  @Slf4j
+  @Component
+  public class RabbitMessageConsumer {
+  
+      @Resource
+      private JudgeService judgeService;
+  
+      /**
+       * 接收消息
+       * @param message
+       * @param channel
+       * @param deliveryTag
+       */
+      @SneakyThrows
+      @RabbitListener(queues = {"judge_queue"}, ackMode = "MANUAL")
+      public void receiveMessage(String message, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) {
+          log.info("receive message: {}", message);
+          // 此处可以根据业务逻辑判断是否进行消息确认，可以对消息进行拒绝，拒绝后会重新放入队列，直到消费成功
+          long questionSubmitId = Long.parseLong(message);
+          try {
+              judgeService.JudgeQuestion(questionSubmitId);
+              channel.basicAck(deliveryTag, false);
+          }catch (Exception e){
+              channel.basicNack(deliveryTag, false, true);
+          }
+      }
+  }
+  ```
 
 ## 六、开发插件
 
@@ -1975,6 +2720,10 @@ const visibleRoutes = routes.filter((item) => {
 - String Manipulation
 
   > 处理字符串格式 
+  
+- Alibaba Cloud Toolkit
+
+  > spring Cloud Alibaba 云原生插件
 
 ### WebStorm 插件
 
@@ -2078,3 +2827,7 @@ netstat -ntulp |grep 5005
   ```
 
 - 参考：https://jasonkayzk.github.io/2024/08/22/2024%E5%B9%B4%E5%AE%89%E8%A3%85Docker%E7%9A%84%E6%96%B9%E6%B3%95/
+
+### 7. 注意事项
+
+- `@RestController` 注解不能写路径
