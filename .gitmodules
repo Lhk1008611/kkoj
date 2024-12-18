@@ -7,3 +7,6 @@
 [submodule "kkoj-code-sandbox"]
 	path = kkoj-code-sandbox
 	url = https://github.com/Lhk1008611/kkoj-code-sandbox
+[submodule "kkoj-backend-micoservice"]
+	path = kkoj-backend-micoservice
+	url = git@github.com:Lhk1008611/kkoj-backend-micoservice.git

@@ -2831,3 +2831,12 @@ netstat -ntulp |grep 5005
 ### 7. 注意事项
 
 - `@RestController` 注解不能写路径
+
+
+
+### 8. git 添加子模块
+
+```bash
+git submodule add git@github.com:Lhk1008611/kkoj-backend-micoservice.git
+```
+
